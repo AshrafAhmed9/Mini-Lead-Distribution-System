@@ -7,16 +7,20 @@ const MANDATORY_PROVIDERS: Record<number, number[]> = {
   3: [1, 4],
 }
 
-const PROVIDER_IDS = [1, 2, 3, 4, 5]
+const ROUND_ROBIN_POOLS: Record<number, number[]> = {
+  1: [2, 3, 4],
+  2: [6, 7, 8],
+  3: [2, 3, 5, 6, 7, 8],
+}
 
 export async function distributeLead(leadId: number, serviceId: number) {
   const mandatory = MANDATORY_PROVIDERS[serviceId] ?? []
+  const pool = ROUND_ROBIN_POOLS[serviceId] ?? []
   const slotsNeeded = 3 - mandatory.length
 
   return await prisma.$transaction(async (tx) => {
-    // Lock the round-robin pointer — serializes concurrent distributions
     const [state] = await tx.$queryRaw<{ pointer: number }[]>`
-      SELECT pointer FROM "RoundRobinState" WHERE id = 1 FOR UPDATE
+      SELECT pointer FROM "RoundRobinState" WHERE service_id = ${serviceId} FOR UPDATE
     `
 
     let pointer = state.pointer
@@ -27,40 +31,40 @@ export async function distributeLead(leadId: number, serviceId: number) {
 
     const monthlyUsage = await tx.leadAssignment.groupBy({
       by: ['provider_id'],
-      where: { assigned_at: { gte: monthStart, lt: monthEnd } },
+      where: {
+        provider_id: { in: pool },
+        assigned_at: { gte: monthStart, lt: monthEnd },
+      },
       _count: { id: true },
     })
 
     const usageMap = new Map(monthlyUsage.map(u => [u.provider_id, u._count.id]))
-    const allProviders = await tx.provider.findMany()
-    const providerMap = new Map(allProviders.map(p => [p.id, p]))
+    const poolProviders = await tx.provider.findMany({ where: { id: { in: pool } } })
+    const providerMap = new Map(poolProviders.map(p => [p.id, p]))
 
     const roundRobinPicks: number[] = []
     let attempts = 0
 
     while (roundRobinPicks.length < slotsNeeded) {
-      if (attempts > PROVIDER_IDS.length * 2) {
-        throw new AppError('All providers have reached their monthly quota', 422)
+      if (attempts > pool.length * 2) {
+        throw new AppError('All providers in this service pool have reached their monthly quota', 422)
       }
 
-      const candidateId = PROVIDER_IDS[pointer % PROVIDER_IDS.length]
-      pointer = (pointer + 1) % PROVIDER_IDS.length
+      const candidateId = pool[pointer % pool.length]
+      pointer = (pointer + 1) % pool.length
 
       const provider = providerMap.get(candidateId)
       if (!provider) { attempts++; continue }
 
       const usedThisMonth = usageMap.get(candidateId) ?? 0
-      const isMandatory = mandatory.includes(candidateId)
-      const atQuota = usedThisMonth >= provider.monthly_quota
-
-      if (!isMandatory && !atQuota) {
+      if (usedThisMonth < provider.monthly_quota) {
         roundRobinPicks.push(candidateId)
       }
       attempts++
     }
 
     await tx.roundRobinState.update({
-      where: { id: 1 },
+      where: { service_id: serviceId },
       data: { pointer },
     })
 

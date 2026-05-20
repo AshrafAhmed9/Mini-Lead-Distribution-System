@@ -9,25 +9,19 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const parsed = CreateLeadSchema.safeParse(body)
+    if (!parsed.success) return apiError(parsed.error.errors[0].message, 400)
 
-    if (!parsed.success) {
-      return apiError(parsed.error.errors[0].message, 400)
-    }
-
-    const { phone, service_id, customer_name } = parsed.data
+    const { phone, service_id, customer_name, city, description } = parsed.data
 
     const lead = await prisma.lead.create({
-      data: { phone, service_id, customer_name },
+      data: { phone, service_id, customer_name, city, description },
     })
 
     await distributeLead(lead.id, lead.service_id)
 
     const fullLead = await prisma.lead.findUnique({
       where: { id: lead.id },
-      include: {
-        assignments: { include: { provider: true } },
-        service: true,
-      },
+      include: { assignments: { include: { provider: true } }, service: true },
     })
 
     return NextResponse.json(fullLead, { status: 201 })
@@ -42,10 +36,7 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   try {
     const leads = await prisma.lead.findMany({
-      include: {
-        assignments: { include: { provider: true } },
-        service: true,
-      },
+      include: { assignments: { include: { provider: true } }, service: true },
       orderBy: { created_at: 'desc' },
       take: 50,
     })

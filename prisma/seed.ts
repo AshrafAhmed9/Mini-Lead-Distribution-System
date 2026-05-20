@@ -1,5 +1,4 @@
 import { PrismaClient } from '@prisma/client'
-
 const prisma = new PrismaClient()
 
 async function main() {
@@ -10,6 +9,9 @@ async function main() {
       { id: 3, name: 'Carol Chen',    email: 'carol@prowider.com' },
       { id: 4, name: 'David Kim',     email: 'david@prowider.com' },
       { id: 5, name: 'Eva Patel',     email: 'eva@prowider.com' },
+      { id: 6, name: 'Frank Torres',  email: 'frank@prowider.com' },
+      { id: 7, name: 'Grace Lee',     email: 'grace@prowider.com' },
+      { id: 8, name: 'Henry Wilson',  email: 'henry@prowider.com' },
     ],
     skipDuplicates: true,
   })
@@ -23,11 +25,13 @@ async function main() {
     skipDuplicates: true,
   })
 
-  await prisma.roundRobinState.upsert({
-    where: { id: 1 },
-    update: {},
-    create: { id: 1, pointer: 0 },
-  })
+  for (const service_id of [1, 2, 3]) {
+    await prisma.roundRobinState.upsert({
+      where: { service_id },
+      update: {},
+      create: { service_id, pointer: 0 },
+    })
+  }
 
   console.log('Seeded successfully')
 }

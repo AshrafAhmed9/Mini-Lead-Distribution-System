@@ -21,12 +21,14 @@ type Lead = {
 }
 
 export default function RequestServicePage() {
-  const [phone, setPhone] = useState('')
-  const [customerName, setCustomerName] = useState('')
-  const [serviceId, setServiceId] = useState('')
+  const [form, setForm] = useState({ phone: '', customer_name: '', city: '', description: '', service_id: '' })
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState<Lead | null>(null)
   const [error, setError] = useState('')
+
+  function update(field: string, value: string) {
+    setForm(f => ({ ...f, [field]: value }))
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -38,11 +40,7 @@ export default function RequestServicePage() {
       const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone,
-          service_id: Number(serviceId),
-          customer_name: customerName,
-        }),
+        body: JSON.stringify({ ...form, service_id: Number(form.service_id) }),
       })
 
       const data = await res.json()
@@ -51,9 +49,7 @@ export default function RequestServicePage() {
         setError(data.error || 'Something went wrong')
       } else {
         setSuccess(data)
-        setPhone('')
-        setCustomerName('')
-        setServiceId('')
+        setForm({ phone: '', customer_name: '', city: '', description: '', service_id: '' })
       }
     } catch {
       setError('Network error. Please try again.')
@@ -71,30 +67,21 @@ export default function RequestServicePage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
-              <Label htmlFor="name">Your Name (optional)</Label>
-              <Input
-                id="name"
-                value={customerName}
-                onChange={e => setCustomerName(e.target.value)}
-                placeholder="John Doe"
-              />
+              <Label>Your Name (optional)</Label>
+              <Input value={form.customer_name} onChange={e => update('customer_name', e.target.value)} placeholder="John Doe" />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="phone">Phone Number *</Label>
-              <Input
-                id="phone"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                placeholder="+1 234 567 8900"
-                required
-              />
+              <Label>Phone Number *</Label>
+              <Input value={form.phone} onChange={e => update('phone', e.target.value)} placeholder="+1 234 567 8900" required />
+            </div>
+            <div className="space-y-1">
+              <Label>City (optional)</Label>
+              <Input value={form.city} onChange={e => update('city', e.target.value)} placeholder="New York" />
             </div>
             <div className="space-y-1">
               <Label>Service Type *</Label>
-              <Select value={serviceId} onValueChange={setServiceId} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a service" />
-                </SelectTrigger>
+              <Select value={form.service_id} onValueChange={v => update('service_id', v)} required>
+                <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">Moving Service</SelectItem>
                   <SelectItem value="2">Packing Service</SelectItem>
@@ -102,23 +89,27 @@ export default function RequestServicePage() {
                 </SelectContent>
               </Select>
             </div>
-
-            <Button type="submit" disabled={loading || !phone || !serviceId} className="w-full">
+            <div className="space-y-1">
+              <Label>Description (optional)</Label>
+              <textarea
+                value={form.description}
+                onChange={e => update('description', e.target.value)}
+                placeholder="Describe your requirements..."
+                className="w-full border rounded-md px-3 py-2 text-sm min-h-[80px] resize-none focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+            </div>
+            <Button type="submit" disabled={loading || !form.phone || !form.service_id} className="w-full">
               {loading ? 'Submitting...' : 'Submit Request'}
             </Button>
           </form>
 
           {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-              {error}
-            </div>
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">{error}</div>
           )}
 
           {success && (
             <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded">
-              <p className="text-green-800 font-medium mb-3">
-                Request submitted! Assigned to {success.assignments.length} providers:
-              </p>
+              <p className="text-green-800 font-medium mb-3">Request submitted! Assigned to {success.assignments.length} providers:</p>
               <div className="space-y-2">
                 {success.assignments.map((a, i) => (
                   <div key={i} className="flex items-center justify-between">

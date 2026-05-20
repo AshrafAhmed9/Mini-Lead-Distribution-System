@@ -8,7 +8,6 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-
 model Provider {
   id            Int              @id @default(autoincrement())
   name          String
@@ -28,6 +27,8 @@ model Lead {
   id            Int              @id @default(autoincrement())
   phone         String
   customer_name String?
+  city          String?
+  description   String?
   service_id    Int
   service       Service          @relation(fields: [service_id], references: [id])
   status        String           @default("distributed")
@@ -48,7 +49,7 @@ model LeadAssignment {
 }
 
 model RoundRobinState {
-  id         Int      @id @default(1)
+  service_id Int      @id
   pointer    Int      @default(0)
   updated_at DateTime @updatedAt
 }

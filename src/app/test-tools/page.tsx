@@ -8,13 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 
-function uuid() {
-  return crypto.randomUUID()
-}
-
-function randomPhone() {
-  return '+1' + Math.floor(1000000000 + Math.random() * 9000000000)
-}
+function uuid() { return crypto.randomUUID() }
+function randomPhone() { return '+1' + Math.floor(1000000000 + Math.random() * 9000000000) }
 
 export default function TestToolsPage() {
   const [eventId, setEventId] = useState(uuid())
@@ -29,10 +24,14 @@ export default function TestToolsPage() {
   const [concurrentResults, setConcurrentResults] = useState<object[]>([])
   const [concurrentLoading, setConcurrentLoading] = useState(false)
 
-  const [rrState, setRrState] = useState<{ pointer: number; updated_at: string } | null>(null)
+  const [resetProviderId, setResetProviderId] = useState('')
+  const [resetResult, setResetResult] = useState<object | null>(null)
+  const [resetLoading, setResetLoading] = useState(false)
+
+  const [rrStates, setRrStates] = useState<{ service_id: number; pointer: number; updated_at: string }[]>([])
 
   useEffect(() => {
-    const fetchRR = () => fetch('/api/rr-state').then(r => r.json()).then(setRrState)
+    const fetchRR = () => fetch('/api/rr-state').then(r => r.json()).then(setRrStates)
     fetchRR()
     const id = setInterval(fetchRR, 2000)
     return () => clearInterval(id)
@@ -69,7 +68,7 @@ export default function TestToolsPage() {
   async function handleConcurrent() {
     setConcurrentLoading(true)
     setConcurrentResults([])
-    const requests = Array.from({ length: 5 }, () =>
+    const requests = Array.from({ length: 10 }, () =>
       fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,6 +79,23 @@ export default function TestToolsPage() {
     setConcurrentResults(results)
     setConcurrentLoading(false)
   }
+
+  async function handleResetQuota() {
+    setResetLoading(true)
+    setResetResult(null)
+    const res = await fetch('/api/webhooks/reset-quota', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_id: uuid(),
+        ...(resetProviderId ? { provider_id: Number(resetProviderId) } : {}),
+      }),
+    })
+    setResetResult(await res.json())
+    setResetLoading(false)
+  }
+
+  const serviceNames: Record<number, string> = { 1: 'Moving', 2: 'Packing', 3: 'Storage' }
 
   return (
     <div className="space-y-6">
@@ -93,7 +109,7 @@ export default function TestToolsPage() {
           <CardContent>
             <form onSubmit={handleWebhook} className="space-y-3">
               <div className="space-y-1">
-                <Label>Event ID (UUID)</Label>
+                <Label>Event ID</Label>
                 <div className="flex gap-2">
                   <Input value={eventId} onChange={e => setEventId(e.target.value)} className="font-mono text-xs" />
                   <Button type="button" variant="outline" onClick={() => setEventId(uuid())}>New</Button>
@@ -133,7 +149,7 @@ export default function TestToolsPage() {
         <Card>
           <CardHeader><CardTitle>Test Idempotency</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-slate-500">Fires the same event_id twice. Second call should return 200 &quot;already processed&quot;.</p>
+            <p className="text-sm text-slate-500">Fires same event_id twice. Second call returns 200 &quot;already processed&quot;.</p>
             <Button onClick={handleIdempotency} disabled={idemLoading} className="w-full">
               {idemLoading ? 'Running...' : 'Run Idempotency Test'}
             </Button>
@@ -152,9 +168,9 @@ export default function TestToolsPage() {
         <Card>
           <CardHeader><CardTitle>Concurrent Lead Simulation</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-slate-500">Fires 5 simultaneous lead requests. Verifies no duplicate provider assignments.</p>
+            <p className="text-sm text-slate-500">Fires 10 simultaneous lead requests. Verifies no quota violations.</p>
             <Button onClick={handleConcurrent} disabled={concurrentLoading} className="w-full">
-              {concurrentLoading ? 'Running...' : 'Fire 5 Concurrent Requests'}
+              {concurrentLoading ? 'Running...' : 'Fire 10 Concurrent Requests'}
             </Button>
             {concurrentResults.length > 0 && (
               <div className="space-y-2">
@@ -173,29 +189,53 @@ export default function TestToolsPage() {
           </CardContent>
         </Card>
 
-        {/* Panel 4 - Round Robin State */}
+        {/* Panel 4 - Reset Quota */}
         <Card>
-          <CardHeader><CardTitle>Round-Robin State</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Reset Provider Quota</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-slate-500">Live view of the persisted round-robin pointer. Updates every 2 seconds.</p>
-            {rrState ? (
-              <div className="p-4 bg-slate-100 rounded space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">Current Pointer</span>
-                  <span className="font-bold text-lg">{rrState.pointer}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">Next Provider</span>
-                  <Badge>Provider {(rrState.pointer % 5) + 1}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">Last Updated</span>
-                  <span className="text-xs text-slate-400">{new Date(rrState.updated_at).toLocaleTimeString()}</span>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400">Loading...</p>
+            <p className="text-sm text-slate-500">Simulates payment webhook resetting a provider&apos;s monthly quota back to 10.</p>
+            <div className="space-y-1">
+              <Label>Provider (leave empty to reset all)</Label>
+              <Select value={resetProviderId} onValueChange={setResetProviderId}>
+                <SelectTrigger><SelectValue placeholder="All providers" /></SelectTrigger>
+                <SelectContent>
+                  {[1,2,3,4,5,6,7,8].map(id => (
+                    <SelectItem key={id} value={String(id)}>Provider {id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleResetQuota} disabled={resetLoading} className="w-full">
+              {resetLoading ? 'Resetting...' : 'Reset Quota (via Webhook)'}
+            </Button>
+            {resetResult && (
+              <pre className="p-3 bg-slate-100 rounded text-xs overflow-auto">
+                {JSON.stringify(resetResult, null, 2)}
+              </pre>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Panel 5 - Round Robin State */}
+        <Card className="md:col-span-2">
+          <CardHeader><CardTitle>Round-Robin State (Live)</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-sm text-slate-500 mb-3">Persisted pointer per service — updates every 2 seconds.</p>
+            <div className="grid grid-cols-3 gap-4">
+              {rrStates.map(s => (
+                <div key={s.service_id} className="p-4 bg-slate-100 rounded space-y-2">
+                  <p className="font-medium text-sm">{serviceNames[s.service_id]} (Service {s.service_id})</p>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Pointer</span>
+                    <span className="font-bold">{s.pointer}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Updated</span>
+                    <span className="text-xs text-slate-400">{new Date(s.updated_at).toLocaleTimeString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 
