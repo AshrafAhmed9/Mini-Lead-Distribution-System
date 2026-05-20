@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+
+model Provider {
+  id            Int              @id @default(autoincrement())
+  name          String
+  email         String?
+  monthly_quota Int              @default(10)
+  assignments   LeadAssignment[]
+  created_at    DateTime         @default(now())
+}
+
+model Service {
+  id    Int    @id @default(autoincrement())
+  name  String
+  leads Lead[]
+}
+
+model Lead {
+  id            Int              @id @default(autoincrement())
+  phone         String
+  customer_name String?
+  service_id    Int
+  service       Service          @relation(fields: [service_id], references: [id])
+  status        String           @default("distributed")
+  created_at    DateTime         @default(now())
+  assignments   LeadAssignment[]
+
+  @@unique([phone, service_id])
+}
+
+model LeadAssignment {
+  id           Int      @id @default(autoincrement())
+  lead_id      Int
+  provider_id  Int
+  is_mandatory Boolean  @default(false)
+  assigned_at  DateTime @default(now())
+  lead         Lead     @relation(fields: [lead_id], references: [id])
+  provider     Provider @relation(fields: [provider_id], references: [id])
+}
+
+model RoundRobinState {
+  id         Int      @id @default(1)
+  pointer    Int      @default(0)
+  updated_at DateTime @updatedAt
+}
+
+model WebhookEvent {
+  id           Int      @id @default(autoincrement())
+  event_id     String   @unique
+  payload      Json
+  processed_at DateTime @default(now())
+}
